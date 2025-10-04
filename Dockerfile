@@ -4,8 +4,8 @@ FROM node:22-alpine
 # Set working directory
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dumb-init and netcat for proper signal handling and wait script
+RUN apk add --no-cache dumb-init netcat-openbsd
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -26,6 +26,10 @@ RUN if [ "$INCLUDE_DEV_DEPS" = "true" ]; then \
 # Copy source code
 COPY . .
 
+# Copy wait script
+COPY ../docker-scripts/wait-for-rabbitmq.sh /usr/local/bin/wait-for-rabbitmq.sh
+RUN chmod +x /usr/local/bin/wait-for-rabbitmq.sh
+
 # Create logs directory
 RUN mkdir -p logs && chown -R nodejs:nodejs /app
 
@@ -36,9 +40,9 @@ USER nodejs
 EXPOSE 3005
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3005/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
-# Start the application
+# Start the application with wait script
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["npm", "start"]
+CMD ["/usr/local/bin/wait-for-rabbitmq.sh", "rabbitmq", "npm", "start"]
