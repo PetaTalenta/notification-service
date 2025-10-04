@@ -27,7 +27,7 @@ RUN if [ "$INCLUDE_DEV_DEPS" = "true" ]; then \
 COPY . .
 
 # Copy wait script
-COPY ../docker-scripts/wait-for-rabbitmq.sh /usr/local/bin/wait-for-rabbitmq.sh
+COPY wait-for-rabbitmq.sh /usr/local/bin/wait-for-rabbitmq.sh
 RUN chmod +x /usr/local/bin/wait-for-rabbitmq.sh
 
 # Create logs directory

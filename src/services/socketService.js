@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
+const unifiedAuthService = require('./unifiedAuthService');
 
 class SocketService {
   constructor() {
@@ -53,45 +54,55 @@ class SocketService {
     });
   }
 
-  authenticateSocket(socket, token) {
+  async authenticateSocket(socket, token) {
     try {
       if (!token) {
         socket.emit('auth_error', { message: 'Token required' });
         return;
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
-      socket.userId = decoded.id;
-      socket.userEmail = decoded.email;
+      // Use unified auth service to verify token (supports both JWT and Firebase)
+      const user = await unifiedAuthService.verifyToken(token);
+
+      if (!user) {
+        socket.emit('auth_error', { message: 'Invalid or expired token' });
+        socket.disconnect();
+        return;
+      }
+
+      socket.userId = user.id;
+      socket.userEmail = user.email;
+      socket.tokenType = user.tokenType;
 
       // Add to user connections map
-      if (!this.userConnections.has(decoded.id)) {
-        this.userConnections.set(decoded.id, new Set());
+      if (!this.userConnections.has(user.id)) {
+        this.userConnections.set(user.id, new Set());
       }
-      this.userConnections.get(decoded.id).add(socket.id);
+      this.userConnections.get(user.id).add(socket.id);
 
       // Join user-specific room
-      socket.join(`user:${decoded.id}`);
+      socket.join(`user:${user.id}`);
 
       socket.emit('authenticated', {
         success: true,
-        userId: decoded.id,
-        email: decoded.email
+        userId: user.id,
+        email: user.email,
+        tokenType: user.tokenType
       });
 
-      logger.info(`Socket authenticated for user ${decoded.email}`, {
+      logger.info(`Socket authenticated for user ${user.email}`, {
         socketId: socket.id,
-        userId: decoded.id
+        userId: user.id,
+        tokenType: user.tokenType
       });
 
     } catch (error) {
       logger.warn(`Socket authentication failed: ${error.message}`, {
         socketId: socket.id
       });
-      
-      socket.emit('auth_error', { 
-        message: error.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token' 
+
+      socket.emit('auth_error', {
+        message: 'Authentication failed'
       });
       socket.disconnect();
     }
